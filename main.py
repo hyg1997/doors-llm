@@ -1,33 +1,34 @@
-import os
-from dotenv import load_dotenv
 from modules.address_validator import AddressValidator
 from modules.address_processor import AddressProcessor
 
-load_dotenv()
-
 def main():
-    api_key = os.getenv('OPENAI_API_KEY')
-    if not api_key:
-        print("Error: OPENAI_API_KEY not found in .env file")
-        return
-    
     processor = AddressProcessor()
-    validator = AddressValidator(api_key)
+    validator = AddressValidator()
     
     while True:
-        address = input("\nPlease enter a text containing an address (or 'exit' to quit): ")
+        print("\nOpciones:")
+        print("1. Validar dirección")
+        print("2. Ver todas las direcciones en la base de datos")
+        print("3. Salir")
         
-        if address.lower() == 'exit':
+        option = input("\nSeleccione una opción (1-3): ")
+        
+        if option == "1":
+            address = input("\nIngrese una dirección: ")
+            processed_address = processor.preprocess_address(address)
+            formatted_address = validator.validate_and_format_address(processed_address)
+            print(f"\nDirección formateada: {formatted_address}")
+            
+        elif option == "2":
+            addresses = validator.get_all_addresses()
+            print("\nDirecciones en la base de datos:")
+            for i, addr in enumerate(addresses, 1):
+                print(f"{i}. {addr['direccion']} (score: {addr['score']:.4f})")
+                
+        elif option == "3":
             break
-
-        processed_address = processor.preprocess_address(address)
-        formated_address = validator.validate_and_format_address(processed_address)
-
-        if not formated_address:
-            print("No valid address found.")
-            continue
-
-        print(f"Formatted Address: {formated_address}")
+        else:
+            print("\nOpción no válida. Por favor, intente de nuevo.")
 
 if __name__ == "__main__":
     main()

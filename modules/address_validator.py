@@ -1,62 +1,112 @@
-import openai
-import json
+from langchain.vectorstores import Chroma
+from .vector_store import VectorStore
+import re
 
 class AddressValidator:
-    def __init__(self, api_key):
-        self.api_key = api_key
-        openai.api_key = api_key
-    
-    def validate_and_format_address(self, address):
-        """Validates an address"""
-        
-        validation_prompt = (
-            "You are an address validation expert. "
-            "Analyze the following text and: \n"
-            "1. Identify if it contains a valid address (even if poorly structured)\n"
-            "2. If you find a valid address, format it correctly\n"
-            "3. If no valid address is found, explain why\n"
-            "4. Consider non-conventional formats\n"
-            "   like 'felipeyofre2794' which should be interpreted as 'Felipe Yofre 2794'\n"
-            "5. Respond in JSON format:\n"
-            "{\n"
-            "  \"contains_address\": true/false,\n"
-            "  \"formatted_address\": \"correctly formatted address\",\n"
-            "  \"explanation\": \"detailed analysis\"\n"
-            "}\n\n"
-            f"Text to analyze: {address}\n"
-        )
+    def __init__(self, csv_path="./data/1641279574.csv"):
+        self.device = "cpu"
+        self.vector_store_manager = VectorStore()
         
         try:
-            response = openai.ChatCompletion.create(
-                model="gpt-3.5-turbo",
-                messages=[
-                    {
-                        "role": "system", 
-                        "content": "You are a specialized address validation assistant."
-                    },
-                    {"role": "user", "content": validation_prompt}
-                ],
-                temperature=0.3,
-                max_tokens=200
+            # Instead of creating from CSV again, just load the existing collection
+            self.vector_store = Chroma(
+                client=self.vector_store_manager.client,
+                collection_name="addresses",
+                embedding_function=self.vector_store_manager.embeddings,
+                persist_directory=self.vector_store_manager.persist_directory
+            )
+        except Exception as e:
+            raise Exception(f"Error al cargar la base de datos vectorial: {str(e)}")
+
+    def _normalize_address(self, address):
+        if not isinstance(address, str):
+            return ""
+            
+        prefixes = {
+            r'\b(jr|jiron|jirón|jr\.|jiron\.|jirón\.)\b': 'Jr.',
+            r'\b(av|avda|avenida|av\.|avda\.)\b': 'Av.',
+            r'\b(ca|calle|ca\.)\b': 'Calle',
+            r'\b(psje|pasaje|psj|psj\.)\b': 'Pasaje',
+            r'\b(urb|urbanizacion|urbanización|urb\.)\b': 'Urb.'
+        }
+        
+        normalized = address.lower()
+        
+        for pattern, replacement in prefixes.items():
+            normalized = re.sub(pattern, replacement, normalized, flags=re.IGNORECASE)
+        
+        words = normalized.split()
+        skip_words = {'de', 'del', 'la', 'las', 'los', 'y', 'e', 'el'}
+        
+        normalized_words = []
+        for i, word in enumerate(words):
+            if word.lower() in skip_words and i > 0:
+                normalized_words.append(word.lower())
+            else:
+                normalized_words.append(word.capitalize())
+                
+        return ' '.join(normalized_words)
+    
+    def validate_and_format_address(self, address):
+        try:
+            normalized_input = self._normalize_address(address)
+            results = self.vector_store.similarity_search_with_score(
+                normalized_input,
+                k=3
             )
             
-            analysis = response.choices[0].message['content']
+            if not results:
+                return {
+                    "contains_address": False,
+                    "formatted_address": "",
+                    "explanation": f"No se encontró una dirección similar a '{address}'"
+                }
             
-            try:
-                result = json.loads(analysis)
-
-                print(f"Analysis: {result.get('explanation', '')}")
-
-                return result.get('formatted_address', False)
+            best_match = None
+            best_score = float('inf')
+            for doc, score in results:
+                candidate = self._normalize_address(str(doc))
+                text_similarity = self._calculate_text_similarity(normalized_input, candidate)
+                combined_score = score * (1 - text_similarity)
                 
-            except json.JSONDecodeError:
-                return self._create_error_response('Error processing analysis response')
+                if combined_score < best_score:
+                    best_score = combined_score
+                    best_match = candidate
+            
+            if best_score < 0.7:
+                number = next((part for part in address.split() if part.isdigit()), "")
+                if number and number not in best_match:
+                    best_match = f"{best_match} {number}"
+                
+                return {
+                    "contains_address": True,
+                    "formatted_address": best_match,
+                    "explanation": f"La dirección '{address}' ha sido normalizada según referencias históricas"
+                }
+            else:
+                basic_format = self._normalize_address(address)
+                return {
+                    "contains_address": True,
+                    "formatted_address": basic_format,
+                    "explanation": f"No se encontró una coincidencia exacta. Se ha aplicado un formato básico a '{address}'"
+                }
             
         except Exception as e:
-            return self._create_error_response(f"Error processing address: {str(e)}")
+            return {
+                "contains_address": False,
+                "formatted_address": "",
+                "explanation": f"Error al procesar la dirección: {str(e)}"
+            }
     
-    def _create_error_response(self, error_message):
-        """Creates a standardized error response"""
-
-        print(f"Error: {error_message}")
-        return  False
+    def _calculate_text_similarity(self, text1, text2):
+        words1 = set(text1.lower().split())
+        words2 = set(text2.lower().split())
+        intersection = len(words1.intersection(words2))
+        union = len(words1.union(words2))
+        return intersection / union if union > 0 else 0
+    
+    def get_all_addresses(self):
+        return self.vector_store_manager.get_all_addresses(
+            self.vector_store._collection,
+            self._normalize_address
+        )

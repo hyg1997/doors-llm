@@ -1,0 +1,11 @@
+langchain
+sentence-transformers
+huggingface-hub
+pandas
+numpy
+scikit-learn
+torch
+transformers
+accelerate
+chromadb
+regex
