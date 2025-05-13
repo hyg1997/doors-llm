@@ -1,5 +1,5 @@
-from langchain.vectorstores import Chroma
-from langchain.embeddings import HuggingFaceEmbeddings
+from langchain_chroma import Chroma
+from langchain_openai import OpenAIEmbeddings
 import pandas as pd
 import os
 import chromadb
@@ -10,12 +10,12 @@ class VectorStore:
         if not os.path.exists(persist_directory):
             os.makedirs(persist_directory, exist_ok=True)
             
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-multilingual-MiniLM-L12-v2"
+        self.embeddings = OpenAIEmbeddings(
+            model="text-embedding-ada-002"
         )
         self.client = chromadb.PersistentClient(path=persist_directory)
         
-    def create_from_csv(self, csv_path, address_normalizer):
+    def create_from_csv(self, csv_path):
         """Crea una base de datos vectorial a partir de un archivo CSV"""
         if not os.path.exists(csv_path):
             raise FileNotFoundError(f"El archivo CSV no existe en la ruta: {csv_path}")
@@ -24,10 +24,8 @@ class VectorStore:
         addresses = []
         
         for _, row in df.iterrows():
-            if isinstance(row['DIRECCION'], str):
-                normalized = address_normalizer(row['DIRECCION'])
-                if normalized:
-                    addresses.append(normalized)
+            if isinstance(row['Direccion'], str):
+                addresses.append(row['Direccion'])
         
         return Chroma.from_texts(
             texts=addresses,
@@ -37,17 +35,14 @@ class VectorStore:
             collection_name="addresses"
         )
         
-    def get_all_addresses(self, collection, address_normalizer):
+    def get_all_addresses(self, collection):
         """Obtiene todas las direcciones almacenadas"""
         try:
             results = collection.get()
             addresses = []
             if results['documents']:
                 for doc in results['documents']:
-                    addresses.append({
-                        'direccion': address_normalizer(doc),
-                        'score': 0.0
-                    })
+                    addresses.append(doc)
             return addresses
             
         except Exception as e:

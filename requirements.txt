@@ -1,6 +1,8 @@
-langchain
+langchain>=0.1.0
+langchain-community>=0.0.10
+langchain-openai>=0.0.3
+langchain-chroma>=0.0.3
 sentence-transformers
-huggingface-hub
 pandas
 numpy
 scikit-learn
@@ -9,3 +11,7 @@ transformers
 accelerate
 chromadb
 regex
+openai
+tiktoken
+requests 
+python-dotenv

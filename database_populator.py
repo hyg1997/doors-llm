@@ -1,4 +1,3 @@
-from modules.address_validator import AddressValidator
 from modules.vector_store import VectorStore
 import shutil
 import os
@@ -15,7 +14,7 @@ def clean_database(persist_directory="./data/vector_db"):
     except Exception as e:
         print(f"Error al limpiar la base de datos: {str(e)}")
 
-def populate_database(csv_path="./data/1641279574.csv", clean=False):
+def populate_database(csv_path=".", clean=False):
     """
     Función para poblar la base de datos vectorial con direcciones desde un CSV
     
@@ -34,10 +33,8 @@ def populate_database(csv_path="./data/1641279574.csv", clean=False):
     
     try:
         if clean or not os.path.exists(os.path.join(persist_directory, "chroma.sqlite3")):
-            validator = AddressValidator()
             vector_store.create_from_csv(
                 csv_path, 
-                validator._normalize_address
             )
             print("Base de datos poblada exitosamente.")
         else:
@@ -46,4 +43,4 @@ def populate_database(csv_path="./data/1641279574.csv", clean=False):
         print(f"Error al poblar la base de datos: {str(e)}")
 
 if __name__ == "__main__":
-    populate_database(clean=True)
+    populate_database("./data/san_borja.csv", True)
